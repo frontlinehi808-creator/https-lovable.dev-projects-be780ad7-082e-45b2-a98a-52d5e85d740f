@@ -16,6 +16,7 @@ The browser contains only the public Supabase URL and publishable key. The inclu
 
 1. Sign in as an authorized operator.
 2. Use Artisan Studio's existing `/printful` page to refresh cached products when needed.
-3. Upload artwork, choose the cached product and placement, and generate the mockup.
-4. Approve or reject manually. Approval creates a Shopify draft with automatic pricing, story, sizes, colors, and the approved mockup.
-5. Review and publish the draft yourself in Shopify.
+3. Name a collection, choose its baby/kids/parent/accessory role, and add one or many artwork files or direct image links.
+4. Select the active artwork, cached product, and placement, then generate the mockup. Repeat with other roles to build a coordinated family collection.
+5. Approve or reject manually. Approval creates a Shopify draft with automatic pricing, collection-specific story, sizes, colors, and the approved mockup.
+6. Review and publish the draft yourself in Shopify.
