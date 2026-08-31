@@ -5,11 +5,12 @@ Frontline Operator is the private Design Drop production desk. It takes approved
 ## Workflow
 
 1. Sign in with an authorized Supabase account.
-2. Upload a PNG or JPG (20 MB maximum, at least 800 × 800 px).
-3. Choose a connected Printful store, cached product variant, and placement.
-4. Generate and review the Printful mockup.
-5. Approve the mockup to create an unpublished Shopify draft.
-6. Review and publish manually in Shopify.
+2. Name a collection and choose a baby, kids, parent, matching-family, or accessory role.
+3. Upload one or several PNG or JPG images (20 MB maximum each, at least 800 × 800 px) and select the artwork for the next product.
+4. Choose a connected Printful store, cached product variant, and placement.
+5. Generate and review the Printful mockup.
+6. Approve it to create an unpublished Shopify draft with the collection story and role.
+7. Review and publish manually in Shopify.
 
 The app never publishes a Shopify product automatically.
 
