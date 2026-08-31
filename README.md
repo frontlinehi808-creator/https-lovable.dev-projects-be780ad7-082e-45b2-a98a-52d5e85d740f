@@ -1,21 +1,48 @@
-# Frontline Operator — Printful to Shopify approval workflow
+# Frontline Operator
 
-This app reuses the Printful backend and cached catalog from `lovabld-artisan-studio`. It generates a mockup, stops for manual approval, and creates a Shopify draft after approval. It never publishes automatically.
+Frontline Operator is the private Design Drop production desk. It takes approved artwork through a Printful mockup, pauses for operator review, and creates an unpublished Shopify draft only after explicit approval.
 
-## Secret placement
+## Workflow
 
-Store these only in Supabase project `lrkvfuovgifdskgcxtgq` under **Edge Functions → Secrets**. Never put them in this repository, `.env`, or a `VITE_` variable.
+1. Sign in with an authorized Supabase account.
+2. Upload a PNG or JPG (20 MB maximum, at least 800 × 800 px).
+3. Choose a connected Printful store, cached product variant, and placement.
+4. Generate and review the Printful mockup.
+5. Approve the mockup to create an unpublished Shopify draft.
+6. Review and publish manually in Shopify.
+
+The app never publishes a Shopify product automatically.
+
+## Local development
+
+```bash
+npm install
+npm run dev
+```
+
+Copy `.env.example` to `.env.local` and supply the public Supabase URL and publishable key. Never put provider credentials in browser-visible `VITE_` variables.
+
+## Supabase configuration
+
+The app currently uses Supabase project `lrkvfuovgifdskgcxtgq`. Configure these provider credentials only under **Edge Functions → Secrets**:
 
 - `PRINTFUL_API_KEY`
 - `SHOPIFY_STORE_DOMAIN` (for example `your-store.myshopify.com`)
 - `SHOPIFY_ADMIN_ACCESS_TOKEN` (custom app token with `write_products`)
 
-The browser contains only the public Supabase URL and publishable key. The included Edge Function requires a valid Supabase user session and allows only store lookup and mockup-generator endpoints.
+The `printful-designs` storage bucket and `printful_products` table must allow authenticated operator access. Disable public Supabase signups or otherwise restrict account creation so only approved operators can obtain a valid session.
 
-## Workflow
+Deploy both edge functions after changes:
 
-1. Sign in as an authorized operator.
-2. Use Artisan Studio's existing `/printful` page to refresh cached products when needed.
-3. Upload artwork, choose the cached product and placement, and generate the mockup.
-4. Approve or reject manually. Approval creates a Shopify draft with automatic pricing, story, sizes, colors, and the approved mockup.
-5. Review and publish the draft yourself in Shopify.
+- `printful`
+- `shopify-draft`
+
+## Validation
+
+```bash
+npm run lint
+npm test
+npm run build
+```
+
+Provider staging still requires valid Printful, Shopify, and Supabase credentials. Use a test product and confirm that approval produces a Shopify product with `DRAFT` status before production use.

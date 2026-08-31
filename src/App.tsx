@@ -1,15 +1,450 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { FormEvent } from "react";
 import type { Session } from "@supabase/supabase-js";
+import {
+  ArrowUpRight,
+  Check,
+  CheckCircle2,
+  ChevronRight,
+  CircleAlert,
+  CloudUpload,
+  ImageIcon,
+  LoaderCircle,
+  LogOut,
+  PackageCheck,
+  RefreshCw,
+  Shirt,
+  Store as StoreIcon,
+  X,
+} from "lucide-react";
 import { supabase } from "./supabase";
-type Store={id:number;name:string;type:string};type Product={id:string;name:string;color:string|null;size:string|null;thumbnail_url:string|null;sync_data:any};type Result={url:string;product:string;placement:string};
-async function callPrintful(path:string,method="GET",payload?:unknown,params?:Record<string,string>,storeId?:number){const{data,error}=await supabase.functions.invoke("printful",{body:{path,method,payload,params,store_id:storeId}});if(error)throw error;if(data?.error)throw new Error(data.error);return data?.data?.result??data?.data}
-async function createShopifyDraft(payload:Record<string,unknown>){const{data,error}=await supabase.functions.invoke("shopify-draft",{body:payload});if(error)throw error;if(data?.error)throw new Error(data.error);return data.product}
-export default function App(){const[session,setSession]=useState<Session|null>(null),[authReady,setAuthReady]=useState(false);const[email,setEmail]=useState(""),[password,setPassword]=useState("");const[stores,setStores]=useState<Store[]>([]),[products,setProducts]=useState<Product[]>([]);const[storeId,setStoreId]=useState<number>(),[productId,setProductId]=useState("");const[placement,setPlacement]=useState("front"),[imageUrl,setImageUrl]=useState("");const[busy,setBusy]=useState(false),[message,setMessage]=useState("Checking Printful…");const[result,setResult]=useState<Result|null>(null);const product=useMemo(()=>products.find(p=>p.id===productId),[products,productId]);
-useEffect(()=>{supabase.auth.getSession().then(({data})=>{setSession(data.session);setAuthReady(true)});const{data}=supabase.auth.onAuthStateChange((_e,s)=>setSession(s));return()=>data.subscription.unsubscribe()},[]);
-useEffect(()=>{if(!session)return;(async()=>{try{const s=await callPrintful("/stores");setStores(s||[]);setStoreId(s?.[0]?.id);const{data,error}=await supabase.from("printful_products").select("*").order("name");if(error)throw error;setProducts(data||[]);setMessage("Connected — choose a design and product.")}catch(e:any){setMessage(e.message||"Connection failed")}})()},[session]);
-async function signIn(){setBusy(true);const{error}=await supabase.auth.signInWithPassword({email,password});if(error)setMessage(error.message);setBusy(false)}
-async function upload(file:File){setBusy(true);setMessage("Uploading design…");try{const path=`designs/${crypto.randomUUID()}-${file.name}`;const{error}=await supabase.storage.from("printful-designs").upload(path,file,{contentType:file.type});if(error)throw error;const{data,error:signError}=await supabase.storage.from("printful-designs").createSignedUrl(path,3600);if(signError)throw signError;setImageUrl(data.signedUrl);setMessage("Design ready.")}catch(e:any){setMessage(e.message)}finally{setBusy(false)}}
-async function generate(){if(!product||!imageUrl)return;setBusy(true);setResult(null);setMessage("Generating mockup…");try{const v=product.sync_data?.variant,catalogProductId=v?.product?.product_id,catalogVariantId=v?.product?.variant_id??v?.variant_id;if(!catalogProductId||!catalogVariantId)throw new Error("Product is missing catalog IDs. Sync it in Artisan Studio first.");const info=await callPrintful(`/mockup-generator/printfiles/${catalogProductId}`,"GET",undefined,undefined,storeId);const entry=info.variant_printfiles?.find((x:any)=>x.variant_id===catalogVariantId),printfileId=entry?.placements?.[placement],area=info.printfiles?.find((x:any)=>x.printfile_id===printfileId);if(!printfileId)throw new Error("That placement is unavailable.");const payload={variant_ids:[catalogVariantId],format:"png",files:[{placement,image_url:imageUrl,position:{area_width:area?.width||1800,area_height:area?.height||2400,width:area?.width||1800,height:area?.height||2400,top:0,left:0}}]};const task=await callPrintful(`/mockup-generator/create-task/${catalogProductId}`,"POST",payload,undefined,storeId);for(let i=0;i<20;i++){await new Promise(r=>setTimeout(r,3000));const poll=await callPrintful("/mockup-generator/task","GET",undefined,{task_key:task.task_key},storeId);if(poll.status==="failed")throw new Error(poll.error?.message||"Printful failed");if(["completed","done"].includes(poll.status)){const url=poll.mockups?.[0]?.mockup_url||poll.mockups?.[0]?.preview_url;if(!url)throw new Error("No mockup URL returned");setResult({url,product:product.name,placement});setMessage("Mockup ready for your approval. Nothing was sent to Shopify.");return}}throw new Error("Printful timed out. Try again.")}catch(e:any){setMessage(e.message)}finally{setBusy(false)}}
-async function approve(){if(!result||!product)return;setBusy(true);setMessage("Creating Shopify draft…");try{const variants=products.filter(p=>p.name===product.name).map(p=>{const v=p.sync_data?.variant||{};return{color:p.color,size:p.size,cost:v.retail_price??v.price??v.product?.price,sku:v.sku??v.external_id}}),draft=await createShopifyDraft({title:result.product,mockup_url:result.url,placement:result.placement,variants});setMessage(`Shopify draft created: ${draft.title}`);window.open(draft.admin_url,"_blank","noopener,noreferrer")}catch(e:any){setMessage(e.message||"Shopify draft failed")}finally{setBusy(false)}}
-if(!authReady)return <main><header><p>FRONTLINE OPERATOR</p><h1>Loading…</h1></header></main>;if(!session)return <main><header><p>FRONTLINE OPERATOR</p><h1>Operator sign in</h1><span className="bad">{message}</span></header><section><label>Email<input type="email" value={email} onChange={e=>setEmail(e.target.value)}/></label><label>Password<input type="password" value={password} onChange={e=>setPassword(e.target.value)}/></label><button disabled={busy||!email||!password} onClick={signIn}>Sign in</button></section></main>;
-return <main><header><p>FRONTLINE OPERATOR</p><h1>Product Desk</h1><span className={stores.length?"ok":"bad"}>{message}</span></header><nav><strong>Design Drop</strong><span>Printful</span><span>Shopify Drafts</span></nav><section><label>1. Upload transparent PNG or JPG<input type="file" accept="image/png,image/jpeg" disabled={busy} onChange={e=>e.target.files?.[0]&&upload(e.target.files[0])}/></label><label>2. Printful store<select value={storeId||""} onChange={e=>setStoreId(Number(e.target.value))}>{stores.map(s=><option key={s.id} value={s.id}>{s.name} ({s.type})</option>)}</select></label><label>3. Product<select value={productId} onChange={e=>setProductId(e.target.value)}><option value="">Choose cached product</option>{products.map(p=><option key={p.id} value={p.id}>{p.name} — {[p.color,p.size].filter(Boolean).join(" / ")}</option>)}</select></label><label>4. Placement<select value={placement} onChange={e=>setPlacement(e.target.value)}><option value="front">Front</option><option value="back">Back</option><option value="sleeve_left">Left sleeve</option><option value="sleeve_right">Right sleeve</option></select></label><button disabled={busy||!imageUrl||!productId} onClick={generate}>{busy?"Working…":"Generate mockup"}</button></section>{result&&<section className="approval"><h2>Awaiting your approval</h2><img src={result.url}/><p>{result.product} · {result.placement}</p><small>Approval creates a Shopify draft with smart pricing, story, sizes, colors, and this mockup. It does not publish.</small><div><a href={result.url} target="_blank">Open full size</a><button disabled={busy} onClick={approve}>{busy?"Creating draft…":"Approve & create Shopify draft"}</button><button className="reject" disabled={busy} onClick={()=>setResult(null)}>Reject</button></div></section>}</main>}
+import {
+  buildDraftVariants,
+  extractCatalogIds,
+  getErrorMessage,
+  sanitizeFileName,
+  validateArtwork,
+} from "./lib/workflow";
+import type {
+  DraftProduct,
+  MockupResult,
+  OperatorProduct,
+  PrintfulStore,
+  StatusMessage,
+} from "./lib/workflow";
+
+const placements = [
+  { value: "front", label: "Front" },
+  { value: "back", label: "Back" },
+  { value: "sleeve_left", label: "Left sleeve" },
+  { value: "sleeve_right", label: "Right sleeve" },
+] as const;
+
+async function callPrintful<T>(
+  path: string,
+  method = "GET",
+  payload?: unknown,
+  params?: Record<string, string>,
+  storeId?: number,
+): Promise<T> {
+  const { data, error } = await supabase.functions.invoke("printful", {
+    body: { path, method, payload, params, store_id: storeId },
+  });
+  if (error) throw error;
+  if (data?.error) throw new Error(data.error);
+  return (data?.data?.result ?? data?.data) as T;
+}
+
+async function createShopifyDraft(payload: Record<string, unknown>) {
+  const { data, error } = await supabase.functions.invoke("shopify-draft", {
+    body: payload,
+  });
+  if (error) throw error;
+  if (data?.error) throw new Error(data.error);
+  return data.product as DraftProduct;
+}
+
+function Status({ status }: { status: StatusMessage }) {
+  const Icon = status.tone === "success" ? CheckCircle2 : status.tone === "error" ? CircleAlert : LoaderCircle;
+  return (
+    <div className={`status status-${status.tone}`} role="status" aria-live="polite">
+      <Icon size={16} className={status.tone === "working" ? "spin" : undefined} aria-hidden="true" />
+      <span>{status.text}</span>
+    </div>
+  );
+}
+
+function SignIn({ onReady }: { onReady: () => void }) {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    setError("");
+    const { error: signInError } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+    if (signInError) setError(signInError.message);
+    else onReady();
+    setBusy(false);
+  }
+
+  return (
+    <main className="auth-shell">
+      <section className="auth-panel" aria-labelledby="signin-title">
+        <div className="wordmark"><span>F</span> Frontline Operator</div>
+        <p className="eyebrow">Design Drop</p>
+        <h1 id="signin-title">Operator sign in</h1>
+        <p className="auth-copy">Private production access for approved Frontline operators.</p>
+        <form onSubmit={submit}>
+          <label htmlFor="email">Email</label>
+          <input id="email" type="email" autoComplete="email" required value={email} onChange={(event) => setEmail(event.target.value)} />
+          <label htmlFor="password">Password</label>
+          <input id="password" type="password" autoComplete="current-password" required value={password} onChange={(event) => setPassword(event.target.value)} />
+          {error && <p className="form-error" role="alert"><CircleAlert size={16} />{error}</p>}
+          <button className="primary-button" disabled={busy || !email.trim() || !password} type="submit">
+            {busy ? <LoaderCircle className="spin" size={18} /> : <ChevronRight size={18} />}
+            {busy ? "Signing in" : "Enter product desk"}
+          </button>
+        </form>
+      </section>
+      <aside className="auth-aside" aria-label="Workflow summary">
+        <div className="auth-art"><Shirt aria-hidden="true" /></div>
+        <p>Artwork to approved Shopify draft.</p>
+        <span>Nothing publishes automatically.</span>
+      </aside>
+    </main>
+  );
+}
+
+export default function App() {
+  const [session, setSession] = useState<Session | null>(null);
+  const [authReady, setAuthReady] = useState(false);
+  const [stores, setStores] = useState<PrintfulStore[]>([]);
+  const [products, setProducts] = useState<OperatorProduct[]>([]);
+  const [storeId, setStoreId] = useState<number>();
+  const [productId, setProductId] = useState("");
+  const [placement, setPlacement] = useState("front");
+  const [artworkUrl, setArtworkUrl] = useState("");
+  const [artworkPreview, setArtworkPreview] = useState("");
+  const [artworkName, setArtworkName] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [loadingData, setLoadingData] = useState(false);
+  const [status, setStatus] = useState<StatusMessage>({ tone: "working", text: "Connecting to production services" });
+  const [result, setResult] = useState<MockupResult | null>(null);
+  const [draft, setDraft] = useState<DraftProduct | null>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
+
+  const product = useMemo(
+    () => products.find((item) => String(item.id) === productId),
+    [products, productId],
+  );
+  const groupedProducts = useMemo(() => {
+    const groups = new Map<string, OperatorProduct[]>();
+    products.forEach((item) => groups.set(item.name, [...(groups.get(item.name) ?? []), item]));
+    return [...groups.entries()].sort(([a], [b]) => a.localeCompare(b));
+  }, [products]);
+  const currentStep = draft ? 4 : result ? 4 : artworkUrl && product ? 3 : artworkUrl ? 2 : 1;
+
+  const loadWorkspace = useCallback(async () => {
+    setLoadingData(true);
+    setStatus({ tone: "working", text: "Syncing Printful stores and product catalog" });
+    try {
+      const [nextStores, productResponse] = await Promise.all([
+        callPrintful<PrintfulStore[]>("/stores"),
+        supabase.from("printful_products").select("*").order("name").order("color").order("size"),
+      ]);
+      if (productResponse.error) throw productResponse.error;
+      setStores(nextStores ?? []);
+      setStoreId((current) => current ?? nextStores?.[0]?.id);
+      setProducts((productResponse.data ?? []) as OperatorProduct[]);
+      setStatus({
+        tone: "success",
+        text: `${nextStores?.length ?? 0} store${nextStores?.length === 1 ? "" : "s"} connected · ${productResponse.data?.length ?? 0} variants ready`,
+      });
+    } catch (error) {
+      setStatus({ tone: "error", text: getErrorMessage(error, "Could not load the product workspace") });
+    } finally {
+      setLoadingData(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    supabase.auth.getSession().then(({ data }) => {
+      if (mounted) {
+        setSession(data.session);
+        setAuthReady(true);
+      }
+    });
+    const { data } = supabase.auth.onAuthStateChange((_event, nextSession) => setSession(nextSession));
+    return () => {
+      mounted = false;
+      data.subscription.unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => () => {
+    if (artworkPreview) URL.revokeObjectURL(artworkPreview);
+  }, [artworkPreview]);
+
+  useEffect(() => {
+    if (session) void loadWorkspace();
+    else if (authReady) {
+      setStores([]);
+      setProducts([]);
+    }
+  }, [session, authReady, loadWorkspace]);
+
+  async function upload(file: File) {
+    const validationError = await validateArtwork(file);
+    if (validationError) {
+      setStatus({ tone: "error", text: validationError });
+      if (fileInput.current) fileInput.current.value = "";
+      return;
+    }
+    setBusy(true);
+    setResult(null);
+    setDraft(null);
+    setStatus({ tone: "working", text: "Uploading artwork securely" });
+    const preview = URL.createObjectURL(file);
+    try {
+      const path = `designs/${crypto.randomUUID()}-${sanitizeFileName(file.name)}`;
+      const { error } = await supabase.storage.from("printful-designs").upload(path, file, {
+        contentType: file.type,
+        cacheControl: "3600",
+        upsert: false,
+      });
+      if (error) throw error;
+      const { data, error: signError } = await supabase.storage.from("printful-designs").createSignedUrl(path, 3600);
+      if (signError) throw signError;
+      setArtworkPreview((oldPreview) => {
+        if (oldPreview) URL.revokeObjectURL(oldPreview);
+        return preview;
+      });
+      setArtworkName(file.name);
+      setArtworkUrl(data.signedUrl);
+      setStatus({ tone: "success", text: "Artwork uploaded and ready for placement" });
+    } catch (error) {
+      URL.revokeObjectURL(preview);
+      setStatus({ tone: "error", text: getErrorMessage(error, "Artwork upload failed") });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function clearArtwork() {
+    if (artworkPreview) URL.revokeObjectURL(artworkPreview);
+    setArtworkPreview("");
+    setArtworkName("");
+    setArtworkUrl("");
+    setResult(null);
+    setDraft(null);
+    if (fileInput.current) fileInput.current.value = "";
+    setStatus({ tone: "success", text: "Choose new artwork to begin another drop" });
+  }
+
+  async function generate() {
+    if (!product || !artworkUrl || !storeId) return;
+    setBusy(true);
+    setResult(null);
+    setDraft(null);
+    setStatus({ tone: "working", text: "Building your Printful mockup" });
+    try {
+      const { catalogProductId, catalogVariantId } = extractCatalogIds(product);
+      const info = await callPrintful<any>(`/mockup-generator/printfiles/${catalogProductId}`, "GET", undefined, undefined, storeId);
+      const entry = info.variant_printfiles?.find((item: any) => Number(item.variant_id) === catalogVariantId);
+      const printfileId = entry?.placements?.[placement];
+      const area = info.printfiles?.find((item: any) => Number(item.printfile_id) === Number(printfileId));
+      if (!printfileId) throw new Error("That placement is not available for the selected product variant.");
+      const width = Number(area?.width) || 1800;
+      const height = Number(area?.height) || 2400;
+      const task = await callPrintful<{ task_key: string }>(
+        `/mockup-generator/create-task/${catalogProductId}`,
+        "POST",
+        {
+          variant_ids: [catalogVariantId],
+          format: "png",
+          files: [{ placement, image_url: artworkUrl, position: { area_width: width, area_height: height, width, height, top: 0, left: 0 } }],
+        },
+        undefined,
+        storeId,
+      );
+      if (!task?.task_key) throw new Error("Printful did not return a mockup task.");
+      for (let attempt = 0; attempt < 20; attempt += 1) {
+        await new Promise((resolve) => window.setTimeout(resolve, attempt === 0 ? 10_000 : 3_000));
+        const poll = await callPrintful<any>("/mockup-generator/task", "GET", undefined, { task_key: task.task_key }, storeId);
+        if (poll.status === "failed") throw new Error(poll.error?.message || "Printful could not generate this mockup.");
+        if (["completed", "done"].includes(poll.status)) {
+          const url = poll.mockups?.[0]?.mockup_url || poll.mockups?.[0]?.preview_url;
+          if (!url) throw new Error("Printful completed without returning a mockup image.");
+          setResult({ url, product: product.name, placement });
+          setStatus({ tone: "success", text: "Mockup ready for manual approval · nothing has been sent to Shopify" });
+          return;
+        }
+      }
+      throw new Error("Printful is taking longer than expected. Try generating again.");
+    } catch (error) {
+      setStatus({ tone: "error", text: getErrorMessage(error, "Mockup generation failed") });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function approve() {
+    if (!result || !product) return;
+    setBusy(true);
+    setStatus({ tone: "working", text: "Creating an unpublished Shopify draft" });
+    try {
+      const variants = buildDraftVariants(products.filter((item) => item.name === product.name));
+      const nextDraft = await createShopifyDraft({
+        title: result.product,
+        mockup_url: result.url,
+        placement: result.placement,
+        variants,
+      });
+      setDraft(nextDraft);
+      setStatus({ tone: "success", text: `Shopify draft created · ${nextDraft.title} remains unpublished` });
+    } catch (error) {
+      setStatus({ tone: "error", text: getErrorMessage(error, "Shopify draft creation failed") });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!authReady) {
+    return <main className="loading-screen"><LoaderCircle className="spin" aria-hidden="true" /><span>Loading Frontline Operator</span></main>;
+  }
+  if (!session) return <SignIn onReady={() => undefined} />;
+
+  return (
+    <div className="app-shell">
+      <aside className="sidebar">
+        <div className="wordmark"><span>F</span><b>Frontline</b><small>Operator</small></div>
+        <nav aria-label="Operator tools">
+          <button className="nav-item active" type="button"><ImageIcon size={18} />Design Drop</button>
+          <div className="nav-item muted"><Shirt size={18} />Printful</div>
+          <div className="nav-item muted"><StoreIcon size={18} />Shopify drafts</div>
+        </nav>
+        <div className="sidebar-foot">
+          <span>{session.user.email}</span>
+          <button type="button" title="Sign out" aria-label="Sign out" onClick={() => void supabase.auth.signOut()}><LogOut size={18} /></button>
+        </div>
+      </aside>
+
+      <main className="workspace">
+        <header className="topbar">
+          <div>
+            <p className="eyebrow">Design Drop</p>
+            <h1>Product desk</h1>
+          </div>
+          <button className="icon-button" type="button" title="Refresh stores and products" aria-label="Refresh stores and products" disabled={loadingData || busy} onClick={() => void loadWorkspace()}>
+            <RefreshCw size={18} className={loadingData ? "spin" : undefined} />
+          </button>
+        </header>
+
+        <Status status={status} />
+
+        <ol className="stepper" aria-label="Design drop progress">
+          {["Artwork", "Product", "Mockup", "Approval"].map((label, index) => {
+            const number = index + 1;
+            return <li key={label} className={number < currentStep ? "complete" : number === currentStep ? "current" : ""}><span>{number < currentStep ? <Check size={14} /> : number}</span>{label}</li>;
+          })}
+        </ol>
+
+        <div className="work-grid">
+          <section className="controls" aria-labelledby="setup-title">
+            <div className="section-heading">
+              <div><p className="section-index">01—03</p><h2 id="setup-title">Set up the drop</h2></div>
+              <p>Choose artwork, the Printful variant, and its placement.</p>
+            </div>
+
+            <div className="field-group">
+              <label htmlFor="artwork">Artwork</label>
+              {artworkPreview ? (
+                <div className="artwork-row">
+                  <div className="artwork-thumb"><img src={artworkPreview} alt="Uploaded artwork preview" /></div>
+                  <div><strong>{artworkName}</strong><span>Uploaded securely</span></div>
+                  <button className="icon-button" type="button" title="Remove artwork" aria-label="Remove artwork" onClick={clearArtwork} disabled={busy}><X size={18} /></button>
+                </div>
+              ) : (
+                <label className="dropzone" htmlFor="artwork">
+                  <CloudUpload size={24} aria-hidden="true" />
+                  <strong>Choose a transparent PNG or JPG</strong>
+                  <span>Maximum 20 MB · at least 800 × 800 px</span>
+                </label>
+              )}
+              <input ref={fileInput} className="visually-hidden" id="artwork" type="file" accept="image/png,image/jpeg" disabled={busy} onChange={(event) => event.target.files?.[0] && void upload(event.target.files[0])} />
+            </div>
+
+            <div className="field-pair">
+              <div className="field-group">
+                <label htmlFor="store">Printful store</label>
+                <select id="store" value={storeId ?? ""} disabled={loadingData || busy || stores.length === 0} onChange={(event) => setStoreId(Number(event.target.value))}>
+                  {stores.length === 0 && <option value="">No stores available</option>}
+                  {stores.map((store) => <option key={store.id} value={store.id}>{store.name} ({store.type})</option>)}
+                </select>
+              </div>
+              <div className="field-group">
+                <label htmlFor="placement">Placement</label>
+                <select id="placement" value={placement} disabled={busy} onChange={(event) => { setPlacement(event.target.value); setResult(null); setDraft(null); }}>
+                  {placements.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+                </select>
+              </div>
+            </div>
+
+            <div className="field-group">
+              <label htmlFor="product">Product variant</label>
+              <select id="product" value={productId} disabled={loadingData || busy || products.length === 0} onChange={(event) => { setProductId(event.target.value); setResult(null); setDraft(null); }}>
+                <option value="">Choose a cached product</option>
+                {groupedProducts.map(([name, items]) => <optgroup key={name} label={name}>{items.map((item) => <option key={item.id} value={String(item.id)}>{[item.color, item.size].filter(Boolean).join(" / ") || "Standard"}</option>)}</optgroup>)}
+              </select>
+              {product?.thumbnail_url && <div className="product-inline"><img src={product.thumbnail_url} alt="" /><span>{product.name}<small>{[product.color, product.size].filter(Boolean).join(" · ")}</small></span></div>}
+            </div>
+
+            <button className="primary-button generate-button" disabled={busy || loadingData || !artworkUrl || !product || !storeId} type="button" onClick={() => void generate()}>
+              {busy && !result ? <LoaderCircle className="spin" size={18} /> : <Shirt size={18} />}
+              {busy && !result ? "Generating mockup" : result ? "Regenerate mockup" : "Generate mockup"}
+            </button>
+          </section>
+
+          <section className={`preview ${result ? "has-result" : ""}`} aria-labelledby="preview-title">
+            <div className="section-heading preview-heading">
+              <div><p className="section-index">04</p><h2 id="preview-title">Review & approve</h2></div>
+              {result && <span className="approval-badge"><CheckCircle2 size={15} />Ready to review</span>}
+            </div>
+            {result ? (
+              <>
+                <div className="mockup-stage"><img src={result.url} alt={`${result.product} ${result.placement.replaceAll("_", " ")} mockup`} /></div>
+                <div className="result-details">
+                  <div><strong>{result.product}</strong><span>{placements.find((item) => item.value === result.placement)?.label} placement</span></div>
+                  <a className="icon-button" href={result.url} target="_blank" rel="noreferrer" title="Open full-size mockup" aria-label="Open full-size mockup"><ArrowUpRight size={18} /></a>
+                </div>
+                {draft ? (
+                  <div className="draft-complete">
+                    <PackageCheck size={23} />
+                    <div><strong>Draft created in Shopify</strong><span>It is unpublished and ready for your final review.</span></div>
+                    <a className="primary-button" href={draft.admin_url} target="_blank" rel="noreferrer">Review draft <ArrowUpRight size={17} /></a>
+                  </div>
+                ) : (
+                  <div className="approval-actions">
+                    <p>Approval creates a Shopify draft with pricing, variants, product story, and this mockup. It never publishes the product.</p>
+                    <button className="primary-button" disabled={busy} type="button" onClick={() => void approve()}>{busy ? <LoaderCircle className="spin" size={18} /> : <Check size={18} />}{busy ? "Creating draft" : "Approve & create draft"}</button>
+                    <button className="text-button" disabled={busy} type="button" onClick={() => { setResult(null); setDraft(null); setStatus({ tone: "success", text: "Mockup rejected · adjust the setup and generate again" }); }}>Reject mockup</button>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="empty-preview">
+                <div><ImageIcon size={28} /></div>
+                <strong>Your mockup will appear here</strong>
+                <span>Complete the setup and generate a preview before anything reaches Shopify.</span>
+              </div>
+            )}
+          </section>
+        </div>
+      </main>
+    </div>
+  );
+}
