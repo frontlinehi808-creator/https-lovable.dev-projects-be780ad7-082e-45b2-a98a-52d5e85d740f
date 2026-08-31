@@ -416,7 +416,7 @@ export default function App() {
             </div>
             {result ? (
               <>
-                <div className="mockup-stage"><img src={result.url} alt={`${result.product} ${result.placement.replaceAll("_", " ")} mockup`} /></div>
+                <div className="mockup-stage"><img src={result.url} alt={`${result.product} ${result.placement.replace(/_/g, " ")} mockup`} /></div>
                 <div className="result-details">
                   <div><strong>{result.product}</strong><span>{placements.find((item) => item.value === result.placement)?.label} placement</span></div>
                   <a className="icon-button" href={result.url} target="_blank" rel="noreferrer" title="Open full-size mockup" aria-label="Open full-size mockup"><ArrowUpRight size={18} /></a>
