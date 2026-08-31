@@ -40,6 +40,9 @@ const placements = [
   { value: "sleeve_right", label: "Right sleeve" },
 ] as const;
 
+type ArtworkAsset = { id: string; name: string; url: string; preview: string };
+const productRoles = ["Baby / onesie", "Kids", "Mom", "Dad", "Family matching", "Accessory"];
+
 async function callPrintful<T>(
   path: string,
   method = "GET",
@@ -129,6 +132,10 @@ export default function App() {
   const [artworkUrl, setArtworkUrl] = useState("");
   const [artworkPreview, setArtworkPreview] = useState("");
   const [artworkName, setArtworkName] = useState("");
+  const [artworkAssets, setArtworkAssets] = useState<ArtworkAsset[]>([]);
+  const [collectionName, setCollectionName] = useState("Forging Hammahs");
+  const [productRole, setProductRole] = useState("Baby / onesie");
+  const [designDirection, setDesignDirection] = useState("Matching island-workwear artwork for babies, kids, moms, and dads. Keep the hammer, cream/teal/black palette, and a warm family connection across the set.");
   const [busy, setBusy] = useState(false);
   const [loadingData, setLoadingData] = useState(false);
   const [status, setStatus] = useState<StatusMessage>({ tone: "working", text: "Connecting to production services" });
@@ -185,10 +192,6 @@ export default function App() {
     };
   }, []);
 
-  useEffect(() => () => {
-    if (artworkPreview) URL.revokeObjectURL(artworkPreview);
-  }, [artworkPreview]);
-
   useEffect(() => {
     if (session) void loadWorkspace();
     else if (authReady) {
@@ -197,48 +200,49 @@ export default function App() {
     }
   }, [session, authReady, loadWorkspace]);
 
-  async function upload(file: File) {
-    const validationError = await validateArtwork(file);
-    if (validationError) {
-      setStatus({ tone: "error", text: validationError });
-      if (fileInput.current) fileInput.current.value = "";
-      return;
-    }
+  async function uploadFiles(files: FileList) {
     setBusy(true);
     setResult(null);
     setDraft(null);
-    setStatus({ tone: "working", text: "Uploading artwork securely" });
-    const preview = URL.createObjectURL(file);
+    setStatus({ tone: "working", text: `Uploading ${files.length} collection image${files.length === 1 ? "" : "s"} securely` });
+    const added: ArtworkAsset[] = [];
     try {
-      const path = `designs/${crypto.randomUUID()}-${sanitizeFileName(file.name)}`;
-      const { error } = await supabase.storage.from("printful-designs").upload(path, file, {
-        contentType: file.type,
-        cacheControl: "3600",
-        upsert: false,
-      });
-      if (error) throw error;
-      const { data, error: signError } = await supabase.storage.from("printful-designs").createSignedUrl(path, 3600);
-      if (signError) throw signError;
-      setArtworkPreview((oldPreview) => {
-        if (oldPreview) URL.revokeObjectURL(oldPreview);
-        return preview;
-      });
-      setArtworkName(file.name);
-      setArtworkUrl(data.signedUrl);
-      setStatus({ tone: "success", text: "Artwork uploaded and ready for placement" });
+      for (const file of Array.from(files)) {
+        const validationError = await validateArtwork(file);
+        if (validationError) throw new Error(`${file.name}: ${validationError}`);
+        const preview = URL.createObjectURL(file);
+        const path = `designs/${crypto.randomUUID()}-${sanitizeFileName(file.name)}`;
+        const { error } = await supabase.storage.from("printful-designs").upload(path, file, { contentType: file.type, cacheControl: "3600", upsert: false });
+        if (error) { URL.revokeObjectURL(preview); throw error; }
+        const { data, error: signError } = await supabase.storage.from("printful-designs").createSignedUrl(path, 3600);
+        if (signError) { URL.revokeObjectURL(preview); throw signError; }
+        added.push({ id: crypto.randomUUID(), name: file.name, url: data.signedUrl, preview });
+      }
+      setArtworkAssets((current) => [...current, ...added]);
+      const active = added[0];
+      if (active) { setArtworkPreview(active.preview); setArtworkName(active.name); setArtworkUrl(active.url); }
+      setStatus({ tone: "success", text: `${added.length} image${added.length === 1 ? "" : "s"} added to ${collectionName}` });
     } catch (error) {
-      URL.revokeObjectURL(preview);
+      added.forEach((asset) => URL.revokeObjectURL(asset.preview));
       setStatus({ tone: "error", text: getErrorMessage(error, "Artwork upload failed") });
     } finally {
+      if (fileInput.current) fileInput.current.value = "";
       setBusy(false);
     }
   }
 
+  function selectArtwork(asset: ArtworkAsset) {
+    setArtworkPreview(asset.preview); setArtworkName(asset.name); setArtworkUrl(asset.url); setResult(null); setDraft(null);
+    setStatus({ tone: "success", text: `${asset.name} selected for the next ${productRole.toLowerCase()} mockup` });
+  }
+
   function clearArtwork() {
-    if (artworkPreview) URL.revokeObjectURL(artworkPreview);
-    setArtworkPreview("");
-    setArtworkName("");
-    setArtworkUrl("");
+    const remaining = artworkAssets.filter((asset) => asset.url !== artworkUrl);
+    const removed = artworkAssets.find((asset) => asset.url === artworkUrl);
+    if (removed) URL.revokeObjectURL(removed.preview);
+    setArtworkAssets(remaining);
+    const next = remaining[0];
+    setArtworkPreview(next?.preview ?? ""); setArtworkName(next?.name ?? ""); setArtworkUrl(next?.url ?? "");
     setResult(null);
     setDraft(null);
     if (fileInput.current) fileInput.current.value = "";
@@ -299,7 +303,10 @@ export default function App() {
     try {
       const variants = buildDraftVariants(products.filter((item) => item.name === product.name));
       const nextDraft = await createShopifyDraft({
-        title: result.product,
+        title: `${collectionName} — ${result.product}`,
+        collection_name: collectionName,
+        product_role: productRole,
+        design_direction: designDirection,
         mockup_url: result.url,
         placement: result.placement,
         variants,
@@ -337,7 +344,7 @@ export default function App() {
         <header className="topbar">
           <div>
             <p className="eyebrow">Design Drop</p>
-            <h1>Product desk</h1>
+            <h1>Collection builder</h1>
           </div>
           <button className="icon-button" type="button" title="Refresh stores and products" aria-label="Refresh stores and products" disabled={loadingData || busy} onClick={() => void loadWorkspace()}>
             <RefreshCw size={18} className={loadingData ? "spin" : undefined} />
@@ -360,22 +367,30 @@ export default function App() {
               <p>Choose artwork, the Printful variant, and its placement.</p>
             </div>
 
+            <div className="field-pair collection-fields">
+              <div className="field-group"><label htmlFor="collection">Collection</label><input id="collection" value={collectionName} onChange={(event) => setCollectionName(event.target.value)} /></div>
+              <div className="field-group"><label htmlFor="role">Product role</label><select id="role" value={productRole} onChange={(event) => setProductRole(event.target.value)}>{productRoles.map((role) => <option key={role}>{role}</option>)}</select></div>
+            </div>
+            <div className="field-group"><label htmlFor="direction">Matching-set direction</label><textarea id="direction" rows={3} value={designDirection} onChange={(event) => setDesignDirection(event.target.value)} /></div>
+
             <div className="field-group">
-              <label htmlFor="artwork">Artwork</label>
+              <label htmlFor="artwork">Collection artwork</label>
               {artworkPreview ? (
                 <div className="artwork-row">
                   <div className="artwork-thumb"><img src={artworkPreview} alt="Uploaded artwork preview" /></div>
-                  <div><strong>{artworkName}</strong><span>Uploaded securely</span></div>
+                  <div><strong>{artworkName}</strong><span>Selected for the next mockup</span></div>
                   <button className="icon-button" type="button" title="Remove artwork" aria-label="Remove artwork" onClick={clearArtwork} disabled={busy}><X size={18} /></button>
                 </div>
               ) : (
                 <label className="dropzone" htmlFor="artwork">
                   <CloudUpload size={24} aria-hidden="true" />
-                  <strong>Choose a transparent PNG or JPG</strong>
+                  <strong>Choose one or several PNG or JPG images</strong>
                   <span>Maximum 20 MB · at least 800 × 800 px</span>
                 </label>
               )}
-              <input ref={fileInput} className="visually-hidden" id="artwork" type="file" accept="image/png,image/jpeg" disabled={busy} onChange={(event) => event.target.files?.[0] && void upload(event.target.files[0])} />
+              {artworkPreview && <label className="add-artwork" htmlFor="artwork"><CloudUpload size={16} /> Add more collection images</label>}
+              <input ref={fileInput} className="visually-hidden" id="artwork" type="file" multiple accept="image/png,image/jpeg" disabled={busy} onChange={(event) => event.target.files && void uploadFiles(event.target.files)} />
+              {artworkAssets.length > 1 && <div className="artwork-library" aria-label="Collection images">{artworkAssets.map((asset) => <button key={asset.id} className={asset.url === artworkUrl ? "selected" : ""} type="button" onClick={() => selectArtwork(asset)}><img src={asset.preview} alt={asset.name} /><span>{asset.name}</span></button>)}</div>}
             </div>
 
             <div className="field-pair">
