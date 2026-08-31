@@ -80,8 +80,9 @@ h2 { margin: 0; font-size: 21px; }
 .field-group { display: grid; gap: 9px; margin-bottom: 20px; }
 .field-group > label:first-child, .field-pair label { font-size: 12px; font-weight: 700; }
 .field-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-select, input { width: 100%; min-height: 46px; border: 1px solid #c8cac4; background: var(--paper); color: var(--ink); border-radius: 4px; padding: 0 12px; }
-select:hover, input:hover { border-color: #979a94; }
+select, input, textarea { width: 100%; min-height: 46px; border: 1px solid #c8cac4; background: var(--paper); color: var(--ink); border-radius: 4px; padding: 0 12px; font: inherit; }
+textarea { padding: 10px 12px; resize: vertical; }
+select:hover, input:hover, textarea:hover { border-color: #979a94; }
 .dropzone { min-height: 126px; display: grid; place-content: center; justify-items: center; gap: 7px; padding: 18px; border: 1px dashed #aeb0aa; background: #f7f7f3; text-align: center; cursor: pointer; transition: border-color .16s, background .16s, transform .16s; }
 .dropzone:hover { border-color: var(--accent); background: #fff6f1; transform: translateY(-1px); }
 .dropzone svg { color: var(--accent-dark); }
@@ -93,6 +94,13 @@ select:hover, input:hover { border-color: #979a94; }
 .artwork-row > div:nth-child(2) { min-width: 0; flex: 1; display: grid; gap: 4px; }
 .artwork-row strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
 .artwork-row span { color: var(--success); font-size: 11px; }
+.collection-fields { margin-top: -5px; }
+.add-artwork { display: inline-flex; align-items: center; gap: 6px; width: fit-content; color: var(--accent-dark); font-size: 11px; font-weight: 700; cursor: pointer; }
+.artwork-library { display: grid; grid-template-columns: repeat(auto-fill, minmax(82px, 1fr)); gap: 8px; }
+.artwork-library button { min-width: 0; display: grid; gap: 5px; padding: 6px; border: 1px solid var(--line); background: var(--paper); color: var(--ink); text-align: left; cursor: pointer; }
+.artwork-library button.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.artwork-library img { width: 100%; aspect-ratio: 1; object-fit: contain; background: #eee; }
+.artwork-library span { overflow: hidden; color: var(--muted); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
 .product-inline { display: flex; align-items: center; gap: 10px; padding-top: 2px; }
 .product-inline img { width: 46px; height: 46px; object-fit: cover; background: #eee; }
 .product-inline > span { display: grid; font-size: 12px; font-weight: 600; }
