@@ -54,6 +54,9 @@ Deno.serve(async (request) => {
     const body = await request.json();
     const cleanTitle = typeof body?.title === "string" ? body.title.trim().slice(0, 255) : "";
     const placement = cleanOption(body?.placement || "front").replaceAll("_", " ") || "front";
+    const collection = cleanOption(body?.collection_name || "Frontline Originals").slice(0, 100);
+    const productRole = cleanOption(body?.product_role || "Artist Designed").slice(0, 60);
+    const designDirection = cleanOption(body?.design_direction).slice(0, 500);
     const rawVariants: Variant[] = Array.isArray(body?.variants) ? body.variants : [];
     if (!cleanTitle || !Array.isArray(rawVariants) || rawVariants.length === 0) throw new Error("Product title, approved mockup, and at least one variant are required");
     if (rawVariants.length > 250) throw new Error("This product has too many variants for a single draft");
@@ -96,14 +99,17 @@ Deno.serve(async (request) => {
     }));
     const titleHtml = escapeHtml(cleanTitle);
     const placementHtml = escapeHtml(placement);
-    const story = `<p><strong>${titleHtml}</strong> turns original artwork into something made to live with, not just something to look at.</p><p>Created through Frontline's artist-led process, this piece carries the energy of handmade work while being produced on demand to reduce waste. The ${placementHtml} placement keeps the design intentional.</p><p>Made to order. Please review the selected size and color before checkout.</p>`;
+    const collectionHtml = escapeHtml(collection);
+    const roleHtml = escapeHtml(productRole.toLowerCase());
+    const directionHtml = escapeHtml(designDirection || "Designed as part of a coordinated family collection.");
+    const story = `<p><strong>${titleHtml}</strong> is part of the ${collectionHtml} collection—original artwork made to connect the whole family.</p><p>This ${roleHtml} piece carries island work ethic, big heart, and handmade energy. ${directionHtml}</p><p>The ${placementHtml} placement keeps the design intentional. Made to order to reduce waste. Please review the selected size and color before checkout.</p>`;
     const query = `mutation CreateDraft($input: ProductSetInput!) { productSet(synchronous: true, input: $input) { product { id title status } userErrors { field message } } }`;
     const input = {
       title: cleanTitle,
       descriptionHtml: story,
       status: "DRAFT",
       vendor: "Frontline",
-      productType: "Artist Designed",
+      productType: productRole,
       productOptions: options,
       variants: productVariants,
       files: [{ originalSource: mockupUrl.toString(), alt: `${cleanTitle} product mockup`, contentType: "IMAGE" }],
