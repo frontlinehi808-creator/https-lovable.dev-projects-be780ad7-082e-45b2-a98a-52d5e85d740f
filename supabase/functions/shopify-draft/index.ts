@@ -25,6 +25,10 @@ function cleanOption(value: unknown) {
   return typeof value === "string" ? value.trim().slice(0, 255) : "";
 }
 
+function shopifySearchValue(value: string) {
+  return value.replaceAll("\\", "\\\\").replaceAll('"', '\\"');
+}
+
 function errorStatus(message: string) {
   if (message === "Sign in required" || message === "Invalid or expired sign-in") return 401;
   if (message.includes("not connected") || message.includes("not configured")) return 503;
@@ -103,6 +107,35 @@ Deno.serve(async (request) => {
     const roleHtml = escapeHtml(productRole.toLowerCase());
     const directionHtml = escapeHtml(designDirection || "Designed as part of a coordinated family collection.");
     const story = `<p><strong>${titleHtml}</strong> is part of the ${collectionHtml} collection—original artwork made to connect the whole family.</p><p>This ${roleHtml} piece carries island work ethic, big heart, and handmade energy. ${directionHtml}</p><p>The ${placementHtml} placement keeps the design intentional. Made to order to reduce waste. Please review the selected size and color before checkout.</p>`;
+    const duplicateQuery = `query FindExistingDraft($query: String!) { products(first: 25, query: $query) { nodes { id title status } } }`;
+    const duplicateResponse = await fetch(`https://${domain}/admin/api/2026-07/graphql.json`, {
+      method: "POST",
+      headers: { "X-Shopify-Access-Token": token, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        query: duplicateQuery,
+        variables: { query: `status:draft title:\"${shopifySearchValue(cleanTitle)}\"` },
+      }),
+      signal: AbortSignal.timeout(30_000),
+    });
+    const duplicateData = await duplicateResponse.json().catch(() => null);
+    if (!duplicateResponse.ok) throw new Error(`Shopify duplicate check returned ${duplicateResponse.status}`);
+    if (duplicateData?.errors?.length) throw new Error(duplicateData.errors.map((error: { message: string }) => error.message).join("; ").slice(0, 500));
+    const existing = duplicateData?.data?.products?.nodes?.find(
+      (candidate: { title?: string; status?: string }) => candidate.title?.trim().toLowerCase() === cleanTitle.toLowerCase() && candidate.status === "DRAFT",
+    );
+    if (existing) {
+      const numericId = String(existing.id).split("/").pop();
+      return json({
+        product: {
+          id: existing.id,
+          title: existing.title,
+          status: existing.status,
+          admin_url: `https://${domain}/admin/products/${numericId}`,
+          existing: true,
+        },
+      });
+    }
+
     const query = `mutation CreateDraft($input: ProductSetInput!) { productSet(synchronous: true, input: $input) { product { id title status } userErrors { field message } } }`;
     const input = {
       title: cleanTitle,
