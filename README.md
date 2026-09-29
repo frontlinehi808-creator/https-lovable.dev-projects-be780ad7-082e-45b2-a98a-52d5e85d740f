@@ -1,8 +1,18 @@
-# Frontline Operator
+# Design Drop / Frontline Operator
 
-Frontline Operator is the private Design Drop production desk. It takes approved artwork through a Printful mockup, pauses for operator review, and creates an unpublished Shopify draft only after explicit approval.
+Design Drop opens with an image cleaner: **choose image → clean image → preview result → save/download cleaned image**. The existing private Frontline Operator production desk remains available through the Printful / Shopify workspace button.
 
-## Workflow
+## Image cleaner
+
+- Select one PNG or JPG (up to 20 MB and 12 megapixels). Small images are allowed; the separate production desk retains its 800 × 800 minimum.
+- Click **Clean image** to remove white or near-white background connected to the edges. Adjust strength and clean again if needed. Enclosed light details are preserved, but light artwork touching the perimeter can be removed: always review the before/after previews.
+- Click **Save / download cleaned PNG** to export the preview as a transparent PNG at the original pixel dimensions. On iPhone, use Share → Save to Files if the browser opens the image.
+- Processing happens on the device. Originals are not uploaded or overwritten. The cleaner needs no account, provider credentials, database, or new Supabase project. Preview URLs last only for the current session; download to keep the result.
+- This is conservative light-background removal, not AI retouching, dark-background removal, upscaling, or verified print preparation. Photos and textured backgrounds may need a different cleaner.
+
+Opening the production desk does not automatically send the cleaned image to it. To use the cleaned PNG there, download it and select that file in the existing artwork upload. Production sign-in and approval gates remain intact. Switching workspaces retains in-progress work until reload.
+
+## Production workflow (preserved)
 
 1. Sign in with an authorized Supabase account.
 2. Name a collection and choose a baby, kids, parent, matching-family, or accessory role.
@@ -21,7 +31,7 @@ npm install
 npm run dev
 ```
 
-Copy `.env.example` to `.env.local` and supply the public Supabase URL and publishable key. Never put provider credentials in browser-visible `VITE_` variables.
+For the production desk, copy `.env.example` to `.env.local` and supply the public Supabase URL and publishable key. The image cleaner works without these variables. Never put provider credentials in browser-visible `VITE_` variables.
 
 ## Supabase configuration
 
@@ -33,7 +43,7 @@ The app currently uses Supabase project `lrkvfuovgifdskgcxtgq`. Configure these 
 
 The `printful-designs` storage bucket and `printful_products` table must allow authenticated operator access. Disable public Supabase signups or otherwise restrict account creation so only approved operators can obtain a valid session.
 
-Deploy both edge functions after changes:
+The existing production desk uses these edge functions (no function changes are needed for the cleaner):
 
 - `printful`
 - `shopify-draft`
@@ -47,3 +57,5 @@ npm run build
 ```
 
 Provider staging still requires valid Printful, Shopify, and Supabase credentials. Use a test product and confirm that approval produces a Shopify product with `DRAFT` status before production use.
+
+Cleaner coverage includes pixel-level removal and preservation, file and dimension limits, PNG encoding failures, file selection, preview/export, stale-result invalidation, retry, and workspace switching. Before deployment, review the branch and manually check one real PNG/JPG plus an iPhone download. This restoration is a frontend-only change and requires no backend migration or new secrets. Merge and publish only after review.
