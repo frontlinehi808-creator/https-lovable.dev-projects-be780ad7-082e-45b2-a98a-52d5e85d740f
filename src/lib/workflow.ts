@@ -23,7 +23,7 @@ export type OperatorProduct = {
 };
 
 export type DraftVariant = { color: string | null; size: string | null; cost: number; sku: string | null };
-export type MockupResult = { url: string; product: string; placement: string };
+export type MockupResult = { url: string; product: string; placement: string; printArea?: { width: number; height: number } };
 export type DraftProduct = { id: string; title: string; status: string; admin_url: string };
 export type StatusMessage = { tone: "working" | "success" | "error"; text: string };
 
@@ -36,7 +36,7 @@ export function sanitizeFileName(name: string) {
   return `${stem || "artwork"}${extension}`;
 }
 
-function imageDimensions(file: File) {
+export function imageDimensions(file: File) {
   return new Promise<{ width: number; height: number }>((resolve, reject) => {
     const url = URL.createObjectURL(file);
     const image = new Image();
@@ -63,6 +63,21 @@ export async function validateArtwork(file: File) {
     return getErrorMessage(error, "Artwork could not be read as an image.");
   }
   return null;
+}
+
+export function fitImageInPrintArea(
+  artwork: { width: number; height: number },
+  area: { width: number; height: number },
+) {
+  if (artwork.width <= 0 || artwork.height <= 0 || area.width <= 0 || area.height <= 0) {
+    throw new Error("Artwork and print-area dimensions must be positive.");
+  }
+  const scale = Math.min(area.width / artwork.width, area.height / artwork.height);
+  const width = Math.max(1, Math.round(artwork.width * scale));
+  const height = Math.max(1, Math.round(artwork.height * scale));
+  const left = Math.max(0, Math.round((area.width - width) / 2));
+  const top = Math.max(0, Math.round((area.height - height) / 2));
+  return { area_width: area.width, area_height: area.height, width, height, left, top };
 }
 
 export function extractCatalogIds(product: OperatorProduct) {
