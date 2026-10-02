@@ -42,7 +42,7 @@ const placements = [
   { value: "sleeve_right", label: "Right sleeve" },
 ] as const;
 
-type ArtworkAsset = { id: string; name: string; url: string; preview: string };
+type ArtworkAsset = { id: string; name: string; url: string; preview: string; width: number; height: number };
 const productRoles = ["Baby / onesie", "Kids", "Mom", "Dad", "Family matching", "Accessory"];
 
 async function callPrintful<T>(
@@ -220,7 +220,7 @@ export default function App() {
         if (error) { URL.revokeObjectURL(preview); throw error; }
         const { data, error: signError } = await supabase.storage.from("printful-designs").createSignedUrl(path, 3600);
         if (signError) { URL.revokeObjectURL(preview); throw signError; }
-        added.push({ id: crypto.randomUUID(), name: file.name, url: data.signedUrl, preview });
+        added.push({ id: crypto.randomUUID(), name: file.name, url: data.signedUrl, preview, width: dimensions.width, height: dimensions.height });
         if (added.length === 1) setArtworkDimensions(dimensions);
       }
       setArtworkAssets((current) => [...current, ...added]);
@@ -237,7 +237,7 @@ export default function App() {
   }
 
   function selectArtwork(asset: ArtworkAsset) {
-    setArtworkPreview(asset.preview); setArtworkName(asset.name); setArtworkUrl(asset.url); setArtworkDimensions(null); setResult(null); setDraft(null);
+    setArtworkPreview(asset.preview); setArtworkName(asset.name); setArtworkUrl(asset.url); setArtworkDimensions({ width: asset.width, height: asset.height }); setResult(null); setDraft(null);
     setStatus({ tone: "success", text: `${asset.name} selected for the next ${productRole.toLowerCase()} mockup` });
   }
 
@@ -247,7 +247,7 @@ export default function App() {
     if (removed) URL.revokeObjectURL(removed.preview);
     setArtworkAssets(remaining);
     const next = remaining[0];
-    setArtworkPreview(next?.preview ?? ""); setArtworkName(next?.name ?? ""); setArtworkUrl(next?.url ?? ""); setArtworkDimensions(null);
+    setArtworkPreview(next?.preview ?? ""); setArtworkName(next?.name ?? ""); setArtworkUrl(next?.url ?? ""); setArtworkDimensions(next ? { width: next.width, height: next.height } : null);
     setResult(null);
     setDraft(null);
     if (fileInput.current) fileInput.current.value = "";
