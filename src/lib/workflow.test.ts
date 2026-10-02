@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildDraftVariants, extractCatalogIds, getErrorMessage, sanitizeFileName } from "./workflow";
+import { buildDraftVariants, extractCatalogIds, fitImageInPrintArea, getErrorMessage, sanitizeFileName } from "./workflow";
 import type { OperatorProduct } from "./workflow";
 
 function product(overrides: Partial<OperatorProduct> = {}): OperatorProduct {
@@ -53,5 +53,36 @@ describe("getErrorMessage", () => {
   it("uses Error messages and falls back for unknown values", () => {
     expect(getErrorMessage(new Error("Provider offline"), "Fallback")).toBe("Provider offline");
     expect(getErrorMessage({ nope: true }, "Fallback")).toBe("Fallback");
+  });
+});
+
+
+describe("fitImageInPrintArea", () => {
+  it("fits landscape artwork inside a portrait print area without stretching", () => {
+    expect(fitImageInPrintArea({ width: 3000, height: 2000 }, { width: 1800, height: 2400 })).toEqual({
+      area_width: 1800,
+      area_height: 2400,
+      width: 1800,
+      height: 1200,
+      left: 0,
+      top: 600,
+    });
+  });
+
+  it("fits portrait artwork inside the area and centers it", () => {
+    expect(fitImageInPrintArea({ width: 2000, height: 3000 }, { width: 1800, height: 2400 })).toEqual({
+      area_width: 1800,
+      area_height: 2400,
+      width: 1600,
+      height: 2400,
+      left: 100,
+      top: 0,
+    });
+  });
+
+  it("rejects invalid dimensions instead of inventing a fallback print area", () => {
+    expect(() => fitImageInPrintArea({ width: 0, height: 3000 }, { width: 1800, height: 2400 })).toThrow(
+      "dimensions must be positive",
+    );
   });
 });
