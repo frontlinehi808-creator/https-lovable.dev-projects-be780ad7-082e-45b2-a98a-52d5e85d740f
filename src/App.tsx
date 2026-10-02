@@ -21,7 +21,9 @@ import { supabase } from "./supabase";
 import {
   buildDraftVariants,
   extractCatalogIds,
+  fitImageInPrintArea,
   getErrorMessage,
+  imageDimensions,
   sanitizeFileName,
   validateArtwork,
 } from "./lib/workflow";
@@ -132,6 +134,7 @@ export default function App() {
   const [artworkUrl, setArtworkUrl] = useState("");
   const [artworkPreview, setArtworkPreview] = useState("");
   const [artworkName, setArtworkName] = useState("");
+  const [artworkDimensions, setArtworkDimensions] = useState<{ width: number; height: number } | null>(null);
   const [artworkAssets, setArtworkAssets] = useState<ArtworkAsset[]>([]);
   const [collectionName, setCollectionName] = useState("Forging Hammahs");
   const [productRole, setProductRole] = useState("Baby / onesie");
@@ -210,6 +213,7 @@ export default function App() {
       for (const file of Array.from(files)) {
         const validationError = await validateArtwork(file);
         if (validationError) throw new Error(`${file.name}: ${validationError}`);
+        const dimensions = await imageDimensions(file);
         const preview = URL.createObjectURL(file);
         const path = `designs/${crypto.randomUUID()}-${sanitizeFileName(file.name)}`;
         const { error } = await supabase.storage.from("printful-designs").upload(path, file, { contentType: file.type, cacheControl: "3600", upsert: false });
@@ -217,6 +221,7 @@ export default function App() {
         const { data, error: signError } = await supabase.storage.from("printful-designs").createSignedUrl(path, 3600);
         if (signError) { URL.revokeObjectURL(preview); throw signError; }
         added.push({ id: crypto.randomUUID(), name: file.name, url: data.signedUrl, preview });
+        if (added.length === 1) setArtworkDimensions(dimensions);
       }
       setArtworkAssets((current) => [...current, ...added]);
       const active = added[0];
@@ -232,7 +237,7 @@ export default function App() {
   }
 
   function selectArtwork(asset: ArtworkAsset) {
-    setArtworkPreview(asset.preview); setArtworkName(asset.name); setArtworkUrl(asset.url); setResult(null); setDraft(null);
+    setArtworkPreview(asset.preview); setArtworkName(asset.name); setArtworkUrl(asset.url); setArtworkDimensions(null); setResult(null); setDraft(null);
     setStatus({ tone: "success", text: `${asset.name} selected for the next ${productRole.toLowerCase()} mockup` });
   }
 
@@ -242,7 +247,7 @@ export default function App() {
     if (removed) URL.revokeObjectURL(removed.preview);
     setArtworkAssets(remaining);
     const next = remaining[0];
-    setArtworkPreview(next?.preview ?? ""); setArtworkName(next?.name ?? ""); setArtworkUrl(next?.url ?? "");
+    setArtworkPreview(next?.preview ?? ""); setArtworkName(next?.name ?? ""); setArtworkUrl(next?.url ?? ""); setArtworkDimensions(null);
     setResult(null);
     setDraft(null);
     if (fileInput.current) fileInput.current.value = "";
@@ -262,15 +267,20 @@ export default function App() {
       const printfileId = entry?.placements?.[placement];
       const area = info.printfiles?.find((item: any) => Number(item.printfile_id) === Number(printfileId));
       if (!printfileId) throw new Error("That placement is not available for the selected product variant.");
-      const width = Number(area?.width) || 1800;
-      const height = Number(area?.height) || 2400;
+      const width = Number(area?.width);
+      const height = Number(area?.height);
+      if (!Number.isFinite(width) || width <= 0 || !Number.isFinite(height) || height <= 0) {
+        throw new Error("Printful did not return a valid print area for this product and placement.");
+      }
+      if (!artworkDimensions) throw new Error("Re-select the artwork so its dimensions can be verified before placement.");
+      const position = fitImageInPrintArea(artworkDimensions, { width, height });
       const task = await callPrintful<{ task_key: string }>(
         `/mockup-generator/create-task/${catalogProductId}`,
         "POST",
         {
           variant_ids: [catalogVariantId],
           format: "png",
-          files: [{ placement, image_url: artworkUrl, position: { area_width: width, area_height: height, width, height, top: 0, left: 0 } }],
+          files: [{ placement, image_url: artworkUrl, position }],
         },
         undefined,
         storeId,
@@ -283,7 +293,7 @@ export default function App() {
         if (["completed", "done"].includes(poll.status)) {
           const url = poll.mockups?.[0]?.mockup_url || poll.mockups?.[0]?.preview_url;
           if (!url) throw new Error("Printful completed without returning a mockup image.");
-          setResult({ url, product: product.name, placement });
+          setResult({ url, product: product.name, placement, printArea: { width, height } });
           setStatus({ tone: "success", text: "Mockup ready for manual approval · nothing has been sent to Shopify" });
           return;
         }
@@ -433,7 +443,7 @@ export default function App() {
               <>
                 <div className="mockup-stage"><img src={result.url} alt={`${result.product} ${result.placement.replace(/_/g, " ")} mockup`} /></div>
                 <div className="result-details">
-                  <div><strong>{result.product}</strong><span>{placements.find((item) => item.value === result.placement)?.label} placement</span></div>
+                  <div><strong>{result.product}</strong><span>{placements.find((item) => item.value === result.placement)?.label} placement{result.printArea ? ` · ${result.printArea.width} × ${result.printArea.height} px Printful area` : ""}</span></div>
                   <a className="icon-button" href={result.url} target="_blank" rel="noreferrer" title="Open full-size mockup" aria-label="Open full-size mockup"><ArrowUpRight size={18} /></a>
                 </div>
                 {draft ? (
